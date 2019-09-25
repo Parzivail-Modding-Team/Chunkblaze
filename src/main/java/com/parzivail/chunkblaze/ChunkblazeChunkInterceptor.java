@@ -2,8 +2,8 @@ package com.parzivail.chunkblaze;
 
 import com.google.common.collect.Maps;
 import net.minecraft.block.Block;
-import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.entity.Entity;
 import net.minecraft.nbt.CompressedStreamTools;
@@ -11,7 +11,6 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ResourceLocation;
-import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.NextTickListEntry;
 import net.minecraft.world.World;
@@ -31,7 +30,6 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -96,7 +94,7 @@ public class ChunkblazeChunkInterceptor implements IThreadedFileIO
 		}
 		catch (Exception exception)
 		{
-			Chunkblaze.logger.error("Failed to save chunk", exception);
+			Chunkblaze.getLogger().error("Failed to save chunk", exception);
 		}
 	}
 
@@ -134,7 +132,7 @@ public class ChunkblazeChunkInterceptor implements IThreadedFileIO
 					}
 					catch (Exception exception)
 					{
-						Chunkblaze.logger.error("Failed to save chunk", exception);
+						Chunkblaze.getLogger().error("Failed to save chunk", exception);
 					}
 				}
 
@@ -282,15 +280,20 @@ public class ChunkblazeChunkInterceptor implements IThreadedFileIO
 
 	private void createWorldFolder(World world)
 	{
-		String safeWorldName = "world1";
+		File savesDir = Chunkblaze.getRemoteSaveFolder();
 
-		File savesDir = Paths.get("E:\\colby\\Desktop\\worlds\\").toFile();
-		savesDir.mkdirs();
+		String safeWorldName = null;
+		ServerData data = Minecraft.getMinecraft().getCurrentServerData();
+
+		if (data != null) // We're on a server
+			safeWorldName = String.format("%s %s", data.serverIP, data.serverName).replaceAll("[^\\w ]+", "-");
+		else // Singleplayer world
+			safeWorldName = world.getWorldInfo().getWorldName();
 
 		saveHandler = new AnvilSaveHandler(savesDir, safeWorldName, true, Minecraft.getMinecraft().getDataFixer());
 		saveHandler.saveWorldInfo(world.getWorldInfo());
 
-		Chunkblaze.logger.info("Saved workingWorld info.");
+		Chunkblaze.getLogger().info("Saved workingWorld info.");
 	}
 
 	public void saveChunks(int x1, int y1, int z1, int x2, int y2, int z2)
@@ -305,12 +308,10 @@ public class ChunkblazeChunkInterceptor implements IThreadedFileIO
 			{
 				Chunk chunk = workingWorld.getChunkFromChunkCoords(cX, cZ);
 
-				IBlockState s = workingWorld.getBlockState(new BlockPos(cX * 16, 50, cZ * 16));
-
 				chunkSaveLocation = getChunkSaveLocation(workingWorld.provider);
 				saveChunk(workingWorld, chunk);
 
-				Chunkblaze.logger.info("Saved chunk ({},{})/{} {}.", chunk.x, chunk.z, workingWorld.provider.getDimensionType().getName(), s.getBlock());
+				Chunkblaze.getLogger().info("Saved chunk ({},{})/{}.", chunk.x, chunk.z, workingWorld.provider.getDimensionType().getName());
 			}
 	}
 }

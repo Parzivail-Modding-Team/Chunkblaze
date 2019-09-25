@@ -1,3 +1,6 @@
+import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder
+
 buildscript {
     repositories {
         jcenter()
@@ -5,15 +8,16 @@ buildscript {
     }
     dependencies {
         classpath 'net.minecraftforge.gradle:ForgeGradle:2.3-SNAPSHOT'
+        classpath 'org.eclipse.jgit:org.eclipse.jgit:5.2.0.201812061821-r'
     }
 }
 apply plugin: 'net.minecraftforge.gradle.forge'
 //Only edit below this line, the above code adds and enables the necessary things for Forge to be setup.
 
 
-version = "1.0"
-group = "com.yourname.modid" // http://maven.apache.org/guides/mini/guide-naming-conventions.html
-archivesBaseName = "modid"
+version = new Git(new FileRepositoryBuilder().readEnvironment().findGitDir(projectDir).build()).describe().setTags(true).call()
+group = "com.parzivail.chunkblaze" // http://maven.apache.org/guides/mini/guide-naming-conventions.html
+archivesBaseName = "chunkblaze"
 
 sourceCompatibility = targetCompatibility = '1.8' // Need this here so eclipse task generates correctly.
 compileJava {
@@ -23,7 +27,7 @@ compileJava {
 minecraft {
     version = "1.12.2-14.23.5.2768"
     runDir = "run"
-    
+
     // the mappings can be changed at any time, and must be in the following format.
     // snapshot_YYYYMMDD   snapshot are built nightly.
     // stable_#            stables are built at the discretion of the MCP team.
@@ -33,12 +37,34 @@ minecraft {
     // makeObfSourceJar = false // an Srg named sources jar is made by default. uncomment this to disable.
 }
 
+File generatedVersionOutputDirectory = new File(new File(new File(new File(project.buildDir, "generated"), "version"), "main"), "java")
+def generateVersionJava = {
+    File output = new File(new File(new File(new File(generatedVersionOutputDirectory, "com"), "parzivail"), "chunkblaze_gen"), "Version.java")
+
+    output.parentFile.mkdirs()
+    output.text = """package com.parzivail.chunkblaze_gen; public final class Version { public static final String VERSION = "${
+        project.version
+    }"; }"""
+}
+generateVersionJava()
+
+sourceSets.main.java.srcDirs += generatedVersionOutputDirectory
+idea {
+    module {
+        generatedSourceDirs += generatedVersionOutputDirectory
+    }
+}
+
+sourceMainJava {
+    doFirst(generateVersionJava)
+}
+
 dependencies {
     // you may put jars on which you depend on in ./libs
     // or you may define them like so..
     //compile "some.group:artifact:version:classifier"
     //compile "some.group:artifact:version"
-      
+
     // real examples
     //compile 'com.mod-buildcraft:buildcraft:6.0.8:dev'  // adds buildcraft to the dev env
     //compile 'com.googlecode.efficient-java-matrix-library:ejml:0.24' // adds ejml to the dev env
@@ -65,11 +91,11 @@ processResources {
     // replace stuff in mcmod.info, nothing else
     from(sourceSets.main.resources.srcDirs) {
         include 'mcmod.info'
-                
+
         // replace version and mcversion
         expand 'version':project.version, 'mcversion':project.minecraft.version
     }
-        
+
     // copy everything else except the mcmod.info
     from(sourceSets.main.resources.srcDirs) {
         exclude 'mcmod.info'
