@@ -1,5 +1,6 @@
-package com.parzivail.chunkblaze;
+package com.parzivail.chunkblaze.handler;
 
+import com.parzivail.chunkblaze.Chunkblaze;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
@@ -11,19 +12,28 @@ import net.minecraft.world.World;
 
 import javax.annotation.Nullable;
 
-public class ChunkSaveEventListener implements IWorldEventListener
+public class ChunkModifiedListener implements IWorldEventListener
 {
-	private final ChunkblazeChunkInterceptor interceptor;
+	private final ChunkDaemon interceptor;
 
-	public ChunkSaveEventListener(ChunkblazeChunkInterceptor interceptor)
+	public ChunkModifiedListener(ChunkDaemon interceptor)
 	{
 		this.interceptor = interceptor;
 	}
 
+	/**
+	 * Listens for ranges of blocks to change in a chunk. The reason it works to hook into
+	 * this render event handler is that it's called under every condition immediately after
+	 * the network receives and unpacks a chunk data packet. It's a bit of a hack but it works
+	 * without having to make an ASM patch.
+	 */
 	@Override
 	public void markBlockRangeForRenderUpdate(int x1, int y1, int z1, int x2, int y2, int z2)
 	{
-		interceptor.saveModifiedChunks(x1, z1, x2, z2);
+		if (!Chunkblaze.Session.isRunning())
+			return;
+
+		interceptor.saveChunk(x1 >> 4, z1 >> 4);
 	}
 
 	@Override

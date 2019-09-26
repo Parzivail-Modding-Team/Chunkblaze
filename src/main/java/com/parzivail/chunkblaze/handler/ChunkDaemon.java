@@ -1,6 +1,10 @@
-package com.parzivail.chunkblaze;
+package com.parzivail.chunkblaze.handler;
 
 import com.google.common.collect.Maps;
+import com.parzivail.chunkblaze.Chunkblaze;
+import com.parzivail.chunkblaze.ChunkblazeConfig;
+import com.parzivail.chunkblaze.io.IOUtils;
+import com.parzivail.chunkblaze.io.ThreadedChunkIO;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.ChunkPos;
@@ -18,13 +22,12 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 
-public class ChunkblazeChunkInterceptor implements IThreadedFileIO
+public class ChunkDaemon implements IThreadedFileIO
 {
 	private World workingWorld;
 	private AnvilSaveHandler saveHandler;
 	private final Map<ChunkPos, NBTTagCompound> chunksToSave = Maps.newConcurrentMap();
 	private final Set<ChunkPos> chunksBeingSaved = Collections.newSetFromMap(Maps.newConcurrentMap());
-	private File chunkSaveLocation;
 
 	@SubscribeEvent
 	@SideOnly(Side.CLIENT)
@@ -32,39 +35,46 @@ public class ChunkblazeChunkInterceptor implements IThreadedFileIO
 	{
 		World world = args.getWorld();
 
-		if (!(world instanceof WorldClient))
+		if (!Chunkblaze.Session.canRun() || !(world instanceof WorldClient))
 			return;
 
 		if (world != workingWorld || saveHandler == null)
 		{
 			workingWorld = world;
 			saveHandler = IOUtils.createSaveHandler(workingWorld);
-			Chunkblaze.getLogger().info("Ready to save chunks in {}.", IOUtils.getWorldName(workingWorld));
+			Chunkblaze.getLogger().info("Ready to save chunks in {}.", IOUtils.getWorldName());
+
+			Chunkblaze.Session.setRunning(ChunkblazeConfig.launchRunning);
+			Chunkblaze.Session.chunksMirrored = 0;
 		}
 
-		world.addEventListener(new ChunkSaveEventListener(this));
+		world.addEventListener(new ChunkModifiedListener(this));
 	}
 
-	private void saveChunk(World world, Chunk chunk)
+	void saveChunk(int chunkX, int chunkZ)
 	{
 		try
 		{
+			Chunk chunk = workingWorld.getChunkFromChunkCoords(chunkX, chunkZ);
+
 			NBTTagCompound nbttagcompound = new NBTTagCompound();
 			NBTTagCompound nbttagcompound1 = new NBTTagCompound();
 			nbttagcompound.setTag("Level", nbttagcompound1);
 			nbttagcompound.setInteger("DataVersion", 1343);
 			net.minecraftforge.fml.common.FMLCommonHandler.instance().getDataFixer().writeVersionData(nbttagcompound);
-			IOUtils.writeChunkToNBT(chunk, world, nbttagcompound1);
+			IOUtils.writeChunkToNBT(chunk, workingWorld, nbttagcompound1);
 			net.minecraftforge.common.ForgeChunkManager.storeChunkNBT(chunk, nbttagcompound1);
 			net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new net.minecraftforge.event.world.ChunkDataEvent.Save(chunk, nbttagcompound));
 			enqueueChunkIO(chunk.getPos(), nbttagcompound);
 
-			if (Chunkblaze.getConfig().getVerbose())
-				Chunkblaze.getLogger().info("Saved chunk ({},{})/{}.", chunk.x, chunk.z, workingWorld.provider.getDimensionType().getName());
+			if (ChunkblazeConfig.verbose)
+				Chunkblaze.getLogger().info("Saved chunk ({},{})/{}.", chunkX, chunkZ, workingWorld.provider.getDimensionType().getName());
+
+			Chunkblaze.Session.chunksMirrored++;
 		}
 		catch (Exception exception)
 		{
-			Chunkblaze.getLogger().error(String.format("Failed to save chunk (%s,%s)/%s.", chunk.x, chunk.z, workingWorld.provider.getDimensionType().getName()), exception);
+			Chunkblaze.getLogger().error(String.format("Failed to save chunk (%s,%s)/%s.", chunkX, chunkZ, workingWorld.provider.getDimensionType().getName()), exception);
 		}
 	}
 
@@ -93,6 +103,7 @@ public class ChunkblazeChunkInterceptor implements IThreadedFileIO
 				{
 					try
 					{
+						File chunkSaveLocation = IOUtils.createProviderFolder(saveHandler, workingWorld.provider);
 						IOUtils.writeChunkData(chunkSaveLocation, chunkpos, nbttagcompound);
 					}
 					catch (Exception exception)
@@ -112,23 +123,8 @@ public class ChunkblazeChunkInterceptor implements IThreadedFileIO
 		return false;
 	}
 
-	void saveModifiedChunks(int x1, int z1, int x2, int z2)
+	public File getCurrentWorldDirectory()
 	{
-		int minX = Math.min(x1 / 16, x2 / 16);
-		int minZ = Math.min(z1 / 16, z2 / 16);
-
-		int maxX = Math.max(x1 / 16, x2 / 16);
-		int maxZ = Math.max(z1 / 16, z2 / 16);
-
-		for (int cX = minX; cX <= maxX; cX++)
-		{
-			for (int cZ = minZ; cZ <= maxZ; cZ++)
-			{
-				Chunk chunk = workingWorld.getChunkFromChunkCoords(cX, cZ);
-
-				chunkSaveLocation = IOUtils.createProviderFolder(saveHandler, workingWorld.provider);
-				saveChunk(workingWorld, chunk);
-			}
-		}
+		return saveHandler.getWorldDirectory();
 	}
 }

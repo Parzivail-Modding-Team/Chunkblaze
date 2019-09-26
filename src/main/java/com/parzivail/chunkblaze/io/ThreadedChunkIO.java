@@ -1,4 +1,4 @@
-package com.parzivail.chunkblaze;
+package com.parzivail.chunkblaze.io;
 
 import com.google.common.collect.Lists;
 import net.minecraft.world.storage.IThreadedFileIO;

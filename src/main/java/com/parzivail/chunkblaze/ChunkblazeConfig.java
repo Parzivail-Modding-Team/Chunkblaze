@@ -1,32 +1,35 @@
 package com.parzivail.chunkblaze;
 
+import net.minecraftforge.common.config.Config;
+import net.minecraftforge.common.config.ConfigManager;
 import net.minecraftforge.common.config.Configuration;
-import net.minecraftforge.common.config.Property;
+import net.minecraftforge.fml.client.event.ConfigChangedEvent;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
-import java.io.File;
-
+@Config(modid = Chunkblaze.MODID)
+@Config.LangKey("chunkblaze.config.category.general")
 public class ChunkblazeConfig extends Configuration
 {
-	private Property verbose;
+	@Config.LangKey("chunkblaze.config.entry.verbose")
+	@Config.Comment("Set to true to enable verbose logging.")
+	public static boolean verbose = false;
 
-	public ChunkblazeConfig(File file)
+	@Config.LangKey("chunkblaze.config.entry.launchRunning")
+	@Config.Comment({
+			                "Set to false to launch worlds Stopped instead of Mirroring.",
+			                "Be warned, this will not mirror any of the chunks that you spawn in until they're re-sent by the server."
+	                })
+	public static boolean launchRunning = true;
+
+	@Mod.EventBusSubscriber
+	private static class EventHandler
 	{
-		super(file);
-		load();
-	}
-
-	public void load()
-	{
-		super.load();
-
-		verbose = get(Configuration.CATEGORY_GENERAL, "verbose", false, "Set to true to enable verbose logging.");
-
-		if (hasChanged())
-			save();
-	}
-
-	public boolean getVerbose()
-	{
-		return verbose.getBoolean();
+		@SubscribeEvent
+		public static void onConfigChanged(ConfigChangedEvent.OnConfigChangedEvent event)
+		{
+			if (event.getModID().equals(Chunkblaze.MODID))
+				ConfigManager.sync(Chunkblaze.MODID, Config.Type.INSTANCE);
+		}
 	}
 }

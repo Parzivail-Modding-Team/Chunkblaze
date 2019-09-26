@@ -2,13 +2,15 @@
 Chunkblaze: back up and keep your multiplayer builds forever.
 
 ## Usage
-With this mod enabled, as you travel through worlds (both singleplayer and multiplayer), a fully game-compatible world will be mirrored into the `remote-saves` directory in your minecraft folder. The coordinates are consistent, so a coordnate in one world is the same coordinate in the mirror.
+Press `Y` to open the Chunkblaze Control Panel, where you can start and stop mirroring, and see statistics about your current session.
+
+With mirroring enabled, as you travel through multiplayer worlds, a fully game-compatible world will be mirrored into the `remote-saves` directory in your minecraft folder. The coordinates are consistent, so a coordinate in one world is the same coordinate in the mirror.
 
 ### Drawbacks
 Due to the nature of the client/server relationship, the following things are **impossible**:
 
 * Mapping areas that the player cannot physically travel to or near
-* Mapping the contents of tile entities (chests, furnaces, etc) without the data being sent to the client (usually by interacting with th tile, like opening a chest or editing a command block). Tiles with a client component, like signs and flower pots, will maintain their data.
+* Mapping the contents of tile entities (i.e. some chests, furnaces, etc) without the data being sent to the client (usually by interacting with th tile, like opening a chest or editing a command block). Some chests, furnaces etc. will maintain their contents. Tiles with a client component, like signs and flower pots, will maintain their data.
 
 ## Note to server owners
 

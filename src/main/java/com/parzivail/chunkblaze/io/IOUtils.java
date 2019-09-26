@@ -1,5 +1,6 @@
-package com.parzivail.chunkblaze;
+package com.parzivail.chunkblaze.io;
 
+import com.parzivail.chunkblaze.Chunkblaze;
 import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ServerData;
@@ -18,6 +19,7 @@ import net.minecraft.world.chunk.NibbleArray;
 import net.minecraft.world.chunk.storage.AnvilSaveHandler;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 import net.minecraft.world.chunk.storage.RegionFileCache;
+import net.minecraft.world.storage.WorldInfo;
 
 import java.io.DataOutputStream;
 import java.io.File;
@@ -26,7 +28,7 @@ import java.util.List;
 
 public class IOUtils
 {
-	static File createProviderFolder(AnvilSaveHandler handler, WorldProvider provider)
+	public static File createProviderFolder(AnvilSaveHandler handler, WorldProvider provider)
 	{
 		File file1 = handler.getWorldDirectory();
 
@@ -42,14 +44,14 @@ public class IOUtils
 		}
 	}
 
-	static void writeChunkData(File worldDir, ChunkPos pos, NBTTagCompound compound) throws IOException
+	public static void writeChunkData(File worldDir, ChunkPos pos, NBTTagCompound compound) throws IOException
 	{
 		DataOutputStream dataoutputstream = RegionFileCache.getChunkOutputStream(worldDir, pos.x, pos.z);
 		CompressedStreamTools.write(compound, dataoutputstream);
 		dataoutputstream.close();
 	}
 
-	static void writeChunkToNBT(Chunk chunkIn, World worldIn, NBTTagCompound compound)
+	public static void writeChunkToNBT(Chunk chunkIn, World worldIn, NBTTagCompound compound)
 	{
 		compound.setInteger("xPos", chunkIn.x);
 		compound.setInteger("zPos", chunkIn.z);
@@ -173,24 +175,27 @@ public class IOUtils
 		}
 	}
 
-	static String getWorldName(World world)
+	public static String getWorldName()
 	{
 		ServerData data = Minecraft.getMinecraft().getCurrentServerData();
 
-		if (data != null) // We're on a server
-			return String.format("%s %s", data.serverIP, data.serverName);
-		else // Singleplayer world
-			return world.getWorldInfo().getWorldName();
+		if (data == null) // We're on a singleplayer world
+			return null;
+
+		return String.format("%s - %s", data.serverIP, data.serverName);
 	}
 
-	static AnvilSaveHandler createSaveHandler(World world)
+	public static AnvilSaveHandler createSaveHandler(World world)
 	{
 		File savesDir = Chunkblaze.getRemoteSaveFolder();
 
-		String safeWorldName = getWorldName(world).replaceAll("[^\\w ]+", "-");
+		String worldName = getWorldName();
+		String safeWorldName = worldName.replaceAll("[^\\w_\\- ]+", "-");
 
 		AnvilSaveHandler handler = new AnvilSaveHandler(savesDir, safeWorldName, true, Minecraft.getMinecraft().getDataFixer());
-		handler.saveWorldInfo(world.getWorldInfo());
+		WorldInfo info = world.getWorldInfo();
+		info.setWorldName(worldName);
+		handler.saveWorldInfo(info);
 
 		return handler;
 	}

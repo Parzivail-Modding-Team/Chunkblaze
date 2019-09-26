@@ -48,10 +48,16 @@ def generateVersionJava = {
 }
 generateVersionJava()
 
-sourceSets.main.java.srcDirs += generatedVersionOutputDirectory
+sourceSets {
+    main {
+        java.srcDirs += generatedVersionOutputDirectory
+        output.resourcesDir = output.classesDir
+    }
+}
 idea {
     module {
         generatedSourceDirs += generatedVersionOutputDirectory
+        inheritOutputDirs = true
     }
 }
 
