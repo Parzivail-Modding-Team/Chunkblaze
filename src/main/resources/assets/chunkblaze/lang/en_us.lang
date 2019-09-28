@@ -5,7 +5,7 @@ chunkblaze.gui.controlpanel.running=§2Mirroring
 chunkblaze.gui.controlpanel.stopped=§4Stopped
 chunkblaze.gui.controlpanel.start=Start Mirroring
 chunkblaze.gui.controlpanel.stop=Stop Mirroring
-chunkblaze.gui.controlpanel.showFolder=Show Folder
+chunkblaze.gui.controlpanel.showFolder=Show Mirror Folder
 chunkblaze.gui.controlpanel.warnSingleplayer=§4Singleplayer World
 
 # Config

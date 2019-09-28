@@ -11,6 +11,7 @@ import net.minecraft.nbt.NBTTagList;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.ChunkPos;
+import net.minecraft.world.GameType;
 import net.minecraft.world.NextTickListEntry;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldProvider;
@@ -193,10 +194,23 @@ public class IOUtils
 		String safeWorldName = worldName.replaceAll("[^\\w_\\- ]+", "-");
 
 		AnvilSaveHandler handler = new AnvilSaveHandler(savesDir, safeWorldName, true, Minecraft.getMinecraft().getDataFixer());
-		WorldInfo info = world.getWorldInfo();
-		info.setWorldName(worldName);
+		WorldInfo info = getWorldInfo(world, worldName);
 		handler.saveWorldInfo(info);
 
 		return handler;
+	}
+
+	private static WorldInfo getWorldInfo(World world, String worldName)
+	{
+		WorldInfo info = world.getWorldInfo();
+
+		info.setWorldName(worldName);
+		info.setGameType(GameType.SPECTATOR);
+		info.setAllowCommands(true);
+
+		info.getGameRulesInstance().setOrCreateGameRule("doFireTick", "false");
+		info.getGameRulesInstance().setOrCreateGameRule("mobGriefing", "false");
+
+		return info;
 	}
 }

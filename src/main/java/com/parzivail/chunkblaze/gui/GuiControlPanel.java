@@ -36,17 +36,15 @@ public class GuiControlPanel extends GuiScreen
 		int startY = height / 6 + 40;
 
 		buttonList.add(bStart = new GuiButtonExt(0, startX, startY, 170, 20, I18n.format("chunkblaze.gui.controlpanel.start")));
+		buttonList.add(bShowFolder = new GuiButtonExt(2, startX, startY + 88, 170, 20, I18n.format("chunkblaze.gui.controlpanel.showFolder")));
 
 		buttonList.add(bStop = new GuiButtonExt(1, startX + 215, startY, 170, 20, I18n.format("chunkblaze.gui.controlpanel.stop")));
-
-		buttonList.add(bShowFolder = new GuiButtonExt(1, startX, startY + 88, 170, 20, I18n.format("chunkblaze.gui.controlpanel.showFolder")));
 
 		boolean canRun = Chunkblaze.Session.canRun();
 		boolean running = Chunkblaze.Session.isRunning();
 
 		bStart.enabled = canRun && !running;
-		bStop.enabled = running;
-
+		bStop.enabled = !bStart.enabled;
 		bShowFolder.enabled = canRun;
 	}
 

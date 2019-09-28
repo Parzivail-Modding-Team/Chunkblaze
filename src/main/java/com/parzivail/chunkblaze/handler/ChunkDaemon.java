@@ -4,7 +4,6 @@ import com.google.common.collect.Maps;
 import com.parzivail.chunkblaze.Chunkblaze;
 import com.parzivail.chunkblaze.ChunkblazeConfig;
 import com.parzivail.chunkblaze.io.IOUtils;
-import com.parzivail.chunkblaze.io.ThreadedChunkIO;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.ChunkPos;
@@ -12,6 +11,7 @@ import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.storage.AnvilSaveHandler;
 import net.minecraft.world.storage.IThreadedFileIO;
+import net.minecraft.world.storage.ThreadedFileIOBase;
 import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.relauncher.Side;
@@ -85,7 +85,7 @@ public class ChunkDaemon implements IThreadedFileIO
 			this.chunksToSave.put(pos, compound);
 		}
 
-		ThreadedChunkIO.getThreadedIOInstance().queueIO(this);
+		ThreadedFileIOBase.getThreadedIOInstance().queueIO(this);
 	}
 
 	public boolean writeNextIO()
