@@ -2,8 +2,9 @@ package com.parzivail.chunkblaze.handler;
 
 import com.google.common.collect.Maps;
 import com.parzivail.chunkblaze.Chunkblaze;
-import com.parzivail.chunkblaze.ChunkblazeConfig;
+import com.parzivail.chunkblaze.config.ChunkblazeConfig;
 import com.parzivail.chunkblaze.io.IOUtils;
+import com.parzivail.chunkblaze.util.CbUtil;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.client.Minecraft;
@@ -35,11 +36,12 @@ import java.util.Set;
 @SideOnly(Side.CLIENT)
 public class ChunkDaemon implements IThreadedFileIO
 {
-	private WorldClient workingWorld;
-	private AnvilSaveHandler saveHandler;
 	private final Map<ChunkPos, NBTTagCompound> chunksToSave = Maps.newConcurrentMap();
 	private final Set<ChunkPos> chunksBeingSaved = Collections.newSetFromMap(Maps.newConcurrentMap());
-	private IWorldEventListener listener = new ChunkModifiedListener(this);
+	private final IWorldEventListener listener = new ChunkModifiedListener(this);
+
+	private WorldClient currentWorld;
+	private AnvilSaveHandler saveHandler;
 	private boolean flushing;
 
 	@SubscribeEvent
@@ -47,22 +49,32 @@ public class ChunkDaemon implements IThreadedFileIO
 	{
 		World world = args.getWorld();
 
-		if (!Chunkblaze.Session.canRun() || !(world instanceof WorldClient))
+		// Only set up the mirroring if we're on a server
+		if (!(Chunkblaze.Session.canRun() && world instanceof WorldClient))
 			return;
 
-		if (world != workingWorld || saveHandler == null)
+		// Set up the mirroring prereqs
+		if (world != currentWorld || saveHandler == null)
 		{
-			if (workingWorld != null)
+			// Write all pending chunks to disk if we're leaving a world, because
+			// the dimension folder to which chunks are saved depends on the
+			// provider of the `currentWorld`
+			if (currentWorld != null)
 				flush();
 
-			workingWorld = (WorldClient)world;
-			saveHandler = IOUtils.createSaveHandler(workingWorld);
+			currentWorld = (WorldClient)world;
 
+			// Create save handler
+			saveHandler = IOUtils.createSaveHandler(currentWorld);
+
+			// Unregister the event handler if we've already visited this
+			// world before we add it back so we don't get duplicate events
 			world.removeEventListener(listener);
 			world.addEventListener(listener);
 
-			Chunkblaze.getLogger().info("Ready to save chunks in {}.", IOUtils.getWorldName());
+			Chunkblaze.getLogger().info("Ready to save chunks in {}.", IOUtils.getServerName());
 
+			// Reset the session state
 			Chunkblaze.Session.setRunning(ChunkblazeConfig.launchRunning);
 			Chunkblaze.Session.chunksMirrored = 0;
 		}
@@ -75,37 +87,46 @@ public class ChunkDaemon implements IThreadedFileIO
 			return;
 
 		Minecraft mc = Minecraft.getMinecraft();
-
 		EntityPlayer player = mc.player;
 
 		if (player == null)
 			return;
 
-		if (changedChunks(player))
-			saveChunk((int)player.posX >> 4, (int)player.posZ >> 4);
+		// Save the chunk the player just left
+		if (CbUtil.changedChunks(player))
+			saveChunk((int)player.prevPosX >> 4, (int)player.prevPosZ >> 4);
 	}
 
-	private boolean changedChunks(EntityPlayer player)
-	{
-		int chunkX = (int)player.posX >> 4;
-		int chunkZ = (int)player.posZ >> 4;
-		int prevChunkX = (int)player.prevPosX >> 4;
-		int prevChunkZ = (int)player.prevPosZ >> 4;
-
-		return chunkX != prevChunkX || chunkZ != prevChunkZ;
-	}
-
+	/**
+	 * Queues the chunk at the specified location for writing to disk
+	 * only if Chunkblaze is running
+	 *
+	 * @param chunkX The chunk's X position
+	 * @param chunkZ The chunk's Z position
+	 */
 	void saveChunk(int chunkX, int chunkZ)
 	{
-		if (!Chunkblaze.Session.isRunning())
+		saveChunk(chunkX, chunkZ, false);
+	}
+
+	/**
+	 * Queues the chunk at the specified location for writing to disk
+	 *
+	 * @param chunkX The chunk's X position
+	 * @param chunkZ The chunk's Z position
+	 * @param force  True to force the chunk to save regardless of whether or not Chunkblaze is running
+	 */
+	void saveChunk(int chunkX, int chunkZ, boolean force)
+	{
+		if (!(Chunkblaze.Session.isRunning() || force))
 			return;
 
-		Chunk chunk = workingWorld.getChunkFromChunkCoords(chunkX, chunkZ);
+		Chunk chunk = currentWorld.getChunkFromChunkCoords(chunkX, chunkZ);
 
 		try
 		{
-			ExtendedBlockStorage[] blocks = chunk.getBlockStorageArray();
-			int sections = countPopulatedSections(blocks);
+			// Make sure the chunk isn't empty before wasting time saving it
+			int sections = countPopulatedSections(chunk);
 			if (sections == 0)
 			{
 				if (ChunkblazeConfig.verbose)
@@ -113,14 +134,13 @@ public class ChunkDaemon implements IThreadedFileIO
 				return;
 			}
 
-			NBTTagCompound nbtChunkContainer = IOUtils.serializeChunk(chunk);
-
-			enqueueChunkIO(chunk.getPos(), nbtChunkContainer);
+			// Queue the chunk to be written to disk
+			enqueueChunkIO(chunk.getPos(), IOUtils.serializeChunk(chunk));
 
 			Chunkblaze.Session.chunksMirrored++;
 
 			if (ChunkblazeConfig.verbose)
-				Chunkblaze.getLogger().info("Saved {} sections in chunk {}.", sections, stringify(chunk));
+				Chunkblaze.getLogger().info("Saved {} sections in chunk {}{}.", sections, stringify(chunk), force ? " (forced)" : "");
 		}
 		catch (Exception exception)
 		{
@@ -128,41 +148,81 @@ public class ChunkDaemon implements IThreadedFileIO
 		}
 	}
 
+	/**
+	 * Creates an informative string representation of the chunk's
+	 * location in the format "(X,Z)/dimension"
+	 *
+	 * @param chunk The chunk to stringify
+	 *
+	 * @return The easily readable description of the chunk's location
+	 */
 	private String stringify(Chunk chunk)
 	{
 		return stringify(chunk.getPos());
 	}
 
+	/**
+	 * Creates an informative string representation of the chunk's
+	 * location in the format "(X,Z)/dimension"
+	 *
+	 * @param chunk The chunk position to stringify
+	 *
+	 * @return The easily readable description of the chunk's location
+	 */
 	private String stringify(ChunkPos chunk)
 	{
-		return String.format("(%s,%s)/%s", chunk.x, chunk.z, workingWorld.provider.getDimensionType().getName());
+		return String.format("(%s,%s)/%s", chunk.x, chunk.z, currentWorld.provider.getDimensionType().getName());
 	}
 
-	private int countPopulatedSections(ExtendedBlockStorage[] blocks)
+	/**
+	 * Finds the number of vertical chunks which contain blocks
+	 *
+	 * @param chunk The chunk to inspect
+	 *
+	 * @return The number of populated vertical chunks
+	 */
+	private int countPopulatedSections(Chunk chunk)
 	{
 		int sections = 0;
 
-		for (ExtendedBlockStorage b : blocks)
+		for (ExtendedBlockStorage b : chunk.getBlockStorageArray())
 			if (b != Chunk.NULL_BLOCK_STORAGE)
 				sections++;
 
 		return sections;
 	}
 
-	private void enqueueChunkIO(ChunkPos pos, NBTTagCompound compound)
+	/**
+	 * Adds the given chunk to the disk queue and notifies the file IO
+	 * scheduler that we need to save something
+	 *
+	 * @param pos             The chunk position to save
+	 * @param serializedChunk The serialized NBT representation of the chunk
+	 */
+	private void enqueueChunkIO(ChunkPos pos, NBTTagCompound serializedChunk)
 	{
 		if (!this.chunksBeingSaved.contains(pos))
-			this.chunksToSave.put(pos, compound);
+			this.chunksToSave.put(pos, serializedChunk);
 
 		ThreadedFileIOBase.getThreadedIOInstance().queueIO(this);
 	}
 
+	/**
+	 * Gets the map of loaded chunks from the private field in {@link ChunkProviderClient}
+	 *
+	 * @return The map of loaded chunks
+	 */
 	private Long2ObjectMap<Chunk> getLoadedChunks()
 	{
-		ChunkProviderClient provider = workingWorld.getChunkProvider();
+		ChunkProviderClient provider = currentWorld.getChunkProvider();
 		return ReflectionHelper.getPrivateValue(ChunkProviderClient.class, provider, "chunkMapping", "field_73236_b", "c");
 	}
 
+	/**
+	 * Gets a list of all of the chunk positions which are currently loaded
+	 *
+	 * @return A list of chunk positions
+	 */
 	private ArrayList<ChunkPos> getLoadedChunkPositions()
 	{
 		Long2ObjectMap<Chunk> chunks = getLoadedChunks();
@@ -170,29 +230,43 @@ public class ChunkDaemon implements IThreadedFileIO
 
 		ArrayList<ChunkPos> positions = new ArrayList<>();
 		for (Long l : keys)
-			positions.add(IOUtils.longToChunkPos(l));
+			positions.add(CbUtil.longToChunkPos(l));
 
 		return positions;
 	}
 
+	/**
+	 * Gets the number of currently loaded chunks
+	 *
+	 * @return The number of chunks loaded
+	 */
 	public int getNumLoadedChunks()
 	{
 		return getLoadedChunks().size();
 	}
 
+	/**
+	 * Forcefully saves all loaded chunks to disk
+	 */
 	public void saveLoadedChunks()
 	{
 		Chunkblaze.getLogger().info("Saving all loaded chunks.");
 
 		ArrayList<ChunkPos> chunks = getLoadedChunkPositions();
 		for (ChunkPos pos : chunks)
-			saveChunk(pos.x, pos.z);
+			saveChunk(pos.x, pos.z, true);
 
 		Chunkblaze.getLogger().info("Saved {} chunks.", chunks.size());
 	}
 
+	/**
+	 * Forces all of the pending disk IO operations to complete
+	 */
 	private void flush()
 	{
+		if (chunksToSave.isEmpty())
+			return;
+
 		try
 		{
 			this.flushing = true;
@@ -206,44 +280,44 @@ public class ChunkDaemon implements IThreadedFileIO
 		}
 	}
 
+	/**
+	 * Pops one disk IO operation from the queue and performs it
+	 *
+	 * @return True if a pending IO operation was completed
+	 */
 	public boolean writeNextIO()
 	{
 		if (this.chunksToSave.isEmpty())
 		{
 			if (this.flushing && ChunkblazeConfig.verbose)
-				Chunkblaze.getLogger().info("All pending chunks flushed.");
+				Chunkblaze.getLogger().info("All pending chunks flushed to disk.");
 
 			return false;
 		}
 
 		ChunkPos chunkpos = this.chunksToSave.keySet().iterator().next();
+		NBTTagCompound serializedChunk = this.chunksToSave.remove(chunkpos);
 
+		this.chunksBeingSaved.add(chunkpos);
 		try
 		{
-			this.chunksBeingSaved.add(chunkpos);
-			NBTTagCompound nbttagcompound = this.chunksToSave.remove(chunkpos);
-
-			if (nbttagcompound != null)
-			{
-				try
-				{
-					File chunkSaveLocation = IOUtils.createProviderFolder(saveHandler, workingWorld.provider);
-					IOUtils.writeChunkData(chunkSaveLocation, chunkpos, nbttagcompound);
-				}
-				catch (Exception exception)
-				{
-					Chunkblaze.getLogger().error(String.format("Failed to write chunk %s.", stringify(chunkpos)), exception);
-				}
-			}
-
-			return true;
+			File chunkSaveLocation = IOUtils.createProviderFolder(saveHandler, currentWorld.provider);
+			IOUtils.writeChunkData(chunkSaveLocation, chunkpos, serializedChunk);
 		}
-		finally
+		catch (Exception exception)
 		{
-			this.chunksBeingSaved.remove(chunkpos);
+			Chunkblaze.getLogger().error(String.format("Failed to write chunk %s.", stringify(chunkpos)), exception);
 		}
+		this.chunksBeingSaved.remove(chunkpos);
+
+		return true;
 	}
 
+	/**
+	 * Gets the directory in which the currentl world will be saved
+	 *
+	 * @return The world's root directory
+	 */
 	public File getCurrentWorldDirectory()
 	{
 		return saveHandler.getWorldDirectory();

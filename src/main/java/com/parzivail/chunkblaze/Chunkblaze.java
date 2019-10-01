@@ -1,5 +1,6 @@
 package com.parzivail.chunkblaze;
 
+import com.parzivail.chunkblaze.config.ChunkblazeKeys;
 import com.parzivail.chunkblaze.handler.ChunkDaemon;
 import com.parzivail.chunkblaze.handler.ChunkblazeEventHandler;
 import com.parzivail.chunkblaze_gen.Version;
@@ -20,34 +21,26 @@ import java.io.File;
 @SideOnly(Side.CLIENT)
 public class Chunkblaze
 {
-	public static class Session
-	{
-		private static boolean running = false;
-
-		public static int chunksMirrored = 0;
-
-		public static boolean canRun()
-		{
-			return !Minecraft.getMinecraft().isSingleplayer();
-		}
-
-		public static boolean isRunning()
-		{
-			return canRun() && running;
-		}
-
-		public static void setRunning(boolean running)
-		{
-			Session.running = canRun() && running;
-		}
-	}
-
 	public static final String MODID = "chunkblaze";
 	public static final String NAME = "Chunkblaze";
-
 	private static Logger logger;
 	private static File remoteSaveFolder;
 	private static ChunkDaemon chunkDaemon;
+
+	public static Logger getLogger()
+	{
+		return logger;
+	}
+
+	public static File getRemoteSaveFolder()
+	{
+		return remoteSaveFolder;
+	}
+
+	public static ChunkDaemon getChunkDaemon()
+	{
+		return chunkDaemon;
+	}
 
 	@EventHandler
 	public void preInit(FMLPreInitializationEvent event)
@@ -73,18 +66,24 @@ public class Chunkblaze
 		ChunkblazeKeys.registerAll();
 	}
 
-	public static Logger getLogger()
+	public static class Session
 	{
-		return logger;
-	}
+		public static int chunksMirrored = 0;
+		private static boolean running = false;
 
-	public static File getRemoteSaveFolder()
-	{
-		return remoteSaveFolder;
-	}
+		public static boolean canRun()
+		{
+			return !Minecraft.getMinecraft().isSingleplayer();
+		}
 
-	public static ChunkDaemon getChunkDaemon()
-	{
-		return chunkDaemon;
+		public static boolean isRunning()
+		{
+			return canRun() && running;
+		}
+
+		public static void setRunning(boolean running)
+		{
+			Session.running = canRun() && running;
+		}
 	}
 }

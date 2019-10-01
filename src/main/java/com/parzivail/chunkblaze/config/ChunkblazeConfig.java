@@ -1,5 +1,6 @@
-package com.parzivail.chunkblaze;
+package com.parzivail.chunkblaze.config;
 
+import com.parzivail.chunkblaze.Chunkblaze;
 import net.minecraftforge.common.config.Config;
 import net.minecraftforge.common.config.ConfigManager;
 import net.minecraftforge.common.config.Configuration;

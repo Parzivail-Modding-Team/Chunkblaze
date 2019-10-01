@@ -1,6 +1,6 @@
 package com.parzivail.chunkblaze.handler;
 
-import com.parzivail.chunkblaze.ChunkblazeKeys;
+import com.parzivail.chunkblaze.config.ChunkblazeKeys;
 import com.parzivail.chunkblaze.gui.GuiControlPanel;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;

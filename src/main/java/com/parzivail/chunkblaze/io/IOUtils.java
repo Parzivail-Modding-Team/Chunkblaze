@@ -33,6 +33,14 @@ import java.util.List;
 
 public class IOUtils
 {
+	/**
+	 * Creates the folder that corresponds to the chunk provider in the world folder
+	 *
+	 * @param handler  The world's save handler
+	 * @param provider The dimension's chunk provider
+	 *
+	 * @return A folder which will contain the region files
+	 */
 	public static File createProviderFolder(AnvilSaveHandler handler, WorldProvider provider)
 	{
 		File file1 = handler.getWorldDirectory();
@@ -49,14 +57,29 @@ public class IOUtils
 		}
 	}
 
-	public static void writeChunkData(File worldDir, ChunkPos pos, NBTTagCompound compound) throws IOException
+	/**
+	 * Writes chunk data to a MCA region file
+	 *
+	 * @param providerFolder The provider folder for the chunk's dimension
+	 * @param pos            The chunk's position
+	 * @param compound       The serialized chunk data
+	 *
+	 * @throws IOException
+	 */
+	public static void writeChunkData(File providerFolder, ChunkPos pos, NBTTagCompound compound) throws IOException
 	{
-		DataOutputStream dataoutputstream = RegionFileCache.getChunkOutputStream(worldDir, pos.x, pos.z);
+		DataOutputStream dataoutputstream = RegionFileCache.getChunkOutputStream(providerFolder, pos.x, pos.z);
 		CompressedStreamTools.write(compound, dataoutputstream);
 		dataoutputstream.close();
 	}
 
-	public static void writeChunkToNBT(Chunk chunk, NBTTagCompound compound)
+	/**
+	 * Serializes the given chunk's data to NBT
+	 *
+	 * @param chunk    The chunk to serialize
+	 * @param compound The tag to serialize into
+	 */
+	public static void writeChunkData(Chunk chunk, NBTTagCompound compound)
 	{
 		World world = chunk.getWorld();
 
@@ -182,7 +205,12 @@ public class IOUtils
 		}
 	}
 
-	public static String getWorldName()
+	/**
+	 * Gets the world name of the currently loaded server
+	 *
+	 * @return The server name in the format "[Server IP] - [Server Name]", or null if it's a singleplayer world
+	 */
+	public static String getServerName()
 	{
 		ServerData data = Minecraft.getMinecraft().getCurrentServerData();
 
@@ -192,11 +220,19 @@ public class IOUtils
 		return String.format("%s - %s", data.serverIP, data.serverName);
 	}
 
+	/**
+	 * Creates a save handler associated with the given world that
+	 * will save world data in the remote-saves folder
+	 *
+	 * @param world The world to create a save handler for
+	 *
+	 * @return A save handler that will save world data
+	 */
 	public static AnvilSaveHandler createSaveHandler(World world)
 	{
 		File savesDir = Chunkblaze.getRemoteSaveFolder();
 
-		String worldName = getWorldName();
+		String worldName = getServerName();
 		String safeWorldName = worldName.replaceAll("[^\\w_\\- ]+", "-");
 
 		AnvilSaveHandler handler = new AnvilSaveHandler(savesDir, safeWorldName, true, Minecraft.getMinecraft().getDataFixer());
@@ -206,6 +242,16 @@ public class IOUtils
 		return handler;
 	}
 
+	/**
+	 * Creates a {@link WorldInfo} for the given world which allows
+	 * commands, spawns players in spectator mode, has doFireTick
+	 * disabled, and has mobGriefing disabled.
+	 *
+	 * @param world     The world to create a info container for
+	 * @param worldName The name of the new save
+	 *
+	 * @return The requested world info container
+	 */
 	private static WorldInfo getWorldInfo(World world, String worldName)
 	{
 		WorldInfo info = world.getWorldInfo();
@@ -220,6 +266,14 @@ public class IOUtils
 		return info;
 	}
 
+	/**
+	 * Creates an NBT chunk container and populates it with metadata and
+	 * the chunk's data
+	 *
+	 * @param chunk The chunk to serialize
+	 *
+	 * @return The NBT representation of the chunk
+	 */
 	public static NBTTagCompound serializeChunk(Chunk chunk)
 	{
 		NBTTagCompound nbtChunkContainer = new NBTTagCompound();
@@ -230,19 +284,11 @@ public class IOUtils
 
 		FMLCommonHandler.instance().getDataFixer().writeVersionData(nbtChunkContainer);
 
-		writeChunkToNBT(chunk, nbtChunkData);
+		writeChunkData(chunk, nbtChunkData);
 		ForgeChunkManager.storeChunkNBT(chunk, nbtChunkData);
 
 		MinecraftForge.EVENT_BUS.post(new ChunkDataEvent.Save(chunk, nbtChunkContainer));
 
 		return nbtChunkContainer;
-	}
-
-	public static ChunkPos longToChunkPos(Long l)
-	{
-		int x = (int)(l & 4294967295L);
-		int z = (int)((l >> 32) & 4294967295L);
-
-		return new ChunkPos(x, z);
 	}
 }

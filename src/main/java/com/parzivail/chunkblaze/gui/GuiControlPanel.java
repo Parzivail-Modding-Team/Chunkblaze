@@ -74,7 +74,7 @@ public class GuiControlPanel extends GuiScreen
 		if (canRun)
 			drawString(fontRenderer, I18n.format("chunkblaze.gui.controlpanel.loadedChunks", numLoadedChunks), startX + 215, startY + 28, 0xFFFFFF);
 
-		String worldName = canRun ? IOUtils.getWorldName() : I18n.format("chunkblaze.gui.controlpanel.warnSingleplayer");
+		String worldName = canRun ? IOUtils.getServerName() : I18n.format("chunkblaze.gui.controlpanel.warnSingleplayer");
 		drawString(fontRenderer, worldName, startX + 215, startY + 94, 0xFFFFFF);
 
 		super.drawScreen(mouseX, mouseY, partialTicks);
