@@ -18,6 +18,7 @@ public class GuiControlPanel extends GuiScreen
 	protected final GuiScreen parent;
 
 	private GuiButtonExt bStart;
+	private GuiButtonExt bSaveLoaded;
 	private GuiButtonExt bStop;
 	private GuiButtonExt bShowFolder;
 
@@ -36,6 +37,7 @@ public class GuiControlPanel extends GuiScreen
 		int startY = height / 6 + 40;
 
 		buttonList.add(bStart = new GuiButtonExt(0, startX, startY, 170, 20, I18n.format("chunkblaze.gui.controlpanel.start")));
+		buttonList.add(bSaveLoaded = new GuiButtonExt(3, startX, startY + 22, 170, 20, I18n.format("chunkblaze.gui.controlpanel.saveLoaded")));
 		buttonList.add(bShowFolder = new GuiButtonExt(2, startX, startY + 88, 170, 20, I18n.format("chunkblaze.gui.controlpanel.showFolder")));
 
 		buttonList.add(bStop = new GuiButtonExt(1, startX + 215, startY, 170, 20, I18n.format("chunkblaze.gui.controlpanel.stop")));
@@ -65,6 +67,9 @@ public class GuiControlPanel extends GuiScreen
 		int startX = width / 2 - 195;
 		int startY = height / 6 + 40;
 
+		int numLoadedChunks = Chunkblaze.getChunkDaemon().getNumLoadedChunks();
+		drawString(fontRenderer, I18n.format("chunkblaze.gui.controlpanel.loadedChunks", numLoadedChunks), startX + 215, startY + 28, 0xFFFFFF);
+
 		String worldName = Chunkblaze.Session.canRun() ? IOUtils.getWorldName() : I18n.format("chunkblaze.gui.controlpanel.warnSingleplayer");
 		drawString(fontRenderer, worldName, startX + 215, startY + 94, 0xFFFFFF);
 
@@ -92,6 +97,10 @@ public class GuiControlPanel extends GuiScreen
 		{
 			Chunkblaze.Session.setRunning(false);
 			initGui();
+		}
+		else if (button == bSaveLoaded)
+		{
+			Chunkblaze.getChunkDaemon().saveLoadedChunks();
 		}
 		else if (button == bShowFolder)
 		{

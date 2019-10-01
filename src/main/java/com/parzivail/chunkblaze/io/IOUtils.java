@@ -21,6 +21,10 @@ import net.minecraft.world.chunk.storage.AnvilSaveHandler;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 import net.minecraft.world.chunk.storage.RegionFileCache;
 import net.minecraft.world.storage.WorldInfo;
+import net.minecraftforge.common.ForgeChunkManager;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.world.ChunkDataEvent;
+import net.minecraftforge.fml.common.FMLCommonHandler;
 
 import java.io.DataOutputStream;
 import java.io.File;
@@ -52,18 +56,20 @@ public class IOUtils
 		dataoutputstream.close();
 	}
 
-	public static void writeChunkToNBT(Chunk chunkIn, World worldIn, NBTTagCompound compound)
+	public static void writeChunkToNBT(Chunk chunk, NBTTagCompound compound)
 	{
-		compound.setInteger("xPos", chunkIn.x);
-		compound.setInteger("zPos", chunkIn.z);
-		compound.setLong("LastUpdate", worldIn.getTotalWorldTime());
-		compound.setIntArray("HeightMap", chunkIn.getHeightMap());
-		compound.setBoolean("TerrainPopulated", chunkIn.isTerrainPopulated());
-		compound.setBoolean("LightPopulated", chunkIn.isLightPopulated());
-		compound.setLong("InhabitedTime", chunkIn.getInhabitedTime());
-		ExtendedBlockStorage[] aextendedblockstorage = chunkIn.getBlockStorageArray();
+		World world = chunk.getWorld();
+
+		compound.setInteger("xPos", chunk.x);
+		compound.setInteger("zPos", chunk.z);
+		compound.setLong("LastUpdate", world.getTotalWorldTime());
+		compound.setIntArray("HeightMap", chunk.getHeightMap());
+		compound.setBoolean("TerrainPopulated", chunk.isTerrainPopulated());
+		compound.setBoolean("LightPopulated", chunk.isLightPopulated());
+		compound.setLong("InhabitedTime", chunk.getInhabitedTime());
+		ExtendedBlockStorage[] aextendedblockstorage = chunk.getBlockStorageArray();
 		NBTTagList nbttaglist = new NBTTagList();
-		boolean flag = worldIn.provider.hasSkyLight();
+		boolean flag = world.provider.hasSkyLight();
 
 		for (ExtendedBlockStorage extendedblockstorage : aextendedblockstorage)
 		{
@@ -98,13 +104,13 @@ public class IOUtils
 		}
 
 		compound.setTag("Sections", nbttaglist);
-		compound.setByteArray("Biomes", chunkIn.getBiomeArray());
-		chunkIn.setHasEntities(false);
+		compound.setByteArray("Biomes", chunk.getBiomeArray());
+		chunk.setHasEntities(false);
 		NBTTagList nbttaglist1 = new NBTTagList();
 
-		for (int i = 0; i < chunkIn.getEntityLists().length; ++i)
+		for (int i = 0; i < chunk.getEntityLists().length; ++i)
 		{
-			for (Entity entity : chunkIn.getEntityLists()[i])
+			for (Entity entity : chunk.getEntityLists()[i])
 			{
 				NBTTagCompound nbttagcompound2 = new NBTTagCompound();
 
@@ -112,7 +118,7 @@ public class IOUtils
 				{
 					if (entity.writeToNBTOptional(nbttagcompound2))
 					{
-						chunkIn.setHasEntities(true);
+						chunk.setHasEntities(true);
 						nbttaglist1.appendTag(nbttagcompound2);
 					}
 				}
@@ -126,7 +132,7 @@ public class IOUtils
 		compound.setTag("Entities", nbttaglist1);
 		NBTTagList nbttaglist2 = new NBTTagList();
 
-		for (TileEntity tileentity : chunkIn.getTileEntityMap().values())
+		for (TileEntity tileentity : chunk.getTileEntityMap().values())
 		{
 			try
 			{
@@ -140,11 +146,11 @@ public class IOUtils
 		}
 
 		compound.setTag("TileEntities", nbttaglist2);
-		List<NextTickListEntry> list = worldIn.getPendingBlockUpdates(chunkIn, false);
+		List<NextTickListEntry> list = world.getPendingBlockUpdates(chunk, false);
 
 		if (list != null)
 		{
-			long j = worldIn.getTotalWorldTime();
+			long j = world.getTotalWorldTime();
 			NBTTagList nbttaglist3 = new NBTTagList();
 
 			for (NextTickListEntry nextticklistentry : list)
@@ -163,11 +169,11 @@ public class IOUtils
 			compound.setTag("TileTicks", nbttaglist3);
 		}
 
-		if (chunkIn.getCapabilities() != null)
+		if (chunk.getCapabilities() != null)
 		{
 			try
 			{
-				compound.setTag("ForgeCaps", chunkIn.getCapabilities().serializeNBT());
+				compound.setTag("ForgeCaps", chunk.getCapabilities().serializeNBT());
 			}
 			catch (Exception exception)
 			{
@@ -212,5 +218,31 @@ public class IOUtils
 		info.getGameRulesInstance().setOrCreateGameRule("mobGriefing", "false");
 
 		return info;
+	}
+
+	public static NBTTagCompound serializeChunk(Chunk chunk)
+	{
+		NBTTagCompound nbtChunkContainer = new NBTTagCompound();
+		NBTTagCompound nbtChunkData = new NBTTagCompound();
+
+		nbtChunkContainer.setTag("Level", nbtChunkData);
+		nbtChunkContainer.setInteger("DataVersion", 1343);
+
+		FMLCommonHandler.instance().getDataFixer().writeVersionData(nbtChunkContainer);
+
+		writeChunkToNBT(chunk, nbtChunkData);
+		ForgeChunkManager.storeChunkNBT(chunk, nbtChunkData);
+
+		MinecraftForge.EVENT_BUS.post(new ChunkDataEvent.Save(chunk, nbtChunkContainer));
+
+		return nbtChunkContainer;
+	}
+
+	public static ChunkPos longToChunkPos(Long l)
+	{
+		int x = (int)(l & 4294967295L);
+		int z = (int)((l >> 32) & 4294967295L);
+
+		return new ChunkPos(x, z);
 	}
 }
