@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 
+@SideOnly(Side.CLIENT)
 public class ChunkDaemon implements IThreadedFileIO
 {
 	private WorldClient workingWorld;
@@ -42,8 +43,7 @@ public class ChunkDaemon implements IThreadedFileIO
 	private boolean flushing;
 
 	@SubscribeEvent
-	@SideOnly(Side.CLIENT)
-	public void on(WorldEvent.Load args)
+	public void handleEvent(WorldEvent.Load args)
 	{
 		World world = args.getWorld();
 
@@ -69,8 +69,7 @@ public class ChunkDaemon implements IThreadedFileIO
 	}
 
 	@SubscribeEvent
-	@SideOnly(Side.CLIENT)
-	public void on(TickEvent.WorldTickEvent args)
+	public void handleEvent(TickEvent.WorldTickEvent args)
 	{
 		if (args.phase != TickEvent.Phase.END)
 			return;
@@ -105,7 +104,6 @@ public class ChunkDaemon implements IThreadedFileIO
 
 		try
 		{
-
 			ExtendedBlockStorage[] blocks = chunk.getBlockStorageArray();
 			int sections = countPopulatedSections(blocks);
 			if (sections == 0)
@@ -132,7 +130,7 @@ public class ChunkDaemon implements IThreadedFileIO
 
 	private String stringify(Chunk chunk)
 	{
-		return String.format("(%s,%s)/%s", chunk.x, chunk.z, workingWorld.provider.getDimensionType().getName());
+		return stringify(chunk.getPos());
 	}
 
 	private String stringify(ChunkPos chunk)
@@ -193,7 +191,7 @@ public class ChunkDaemon implements IThreadedFileIO
 		Chunkblaze.getLogger().info("Saved {} chunks.", chunks.size());
 	}
 
-	public void flush()
+	private void flush()
 	{
 		try
 		{
@@ -213,7 +211,7 @@ public class ChunkDaemon implements IThreadedFileIO
 		if (this.chunksToSave.isEmpty())
 		{
 			if (this.flushing && ChunkblazeConfig.verbose)
-				Chunkblaze.getLogger().info("All pending chunks flushed before changing worlds.");
+				Chunkblaze.getLogger().info("All pending chunks flushed.");
 
 			return false;
 		}

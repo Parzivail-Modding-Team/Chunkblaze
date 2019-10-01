@@ -47,6 +47,7 @@ public class GuiControlPanel extends GuiScreen
 
 		bStart.enabled = canRun && !running;
 		bStop.enabled = !bStart.enabled;
+		bSaveLoaded.enabled = canRun;
 		bShowFolder.enabled = canRun;
 	}
 
@@ -67,10 +68,13 @@ public class GuiControlPanel extends GuiScreen
 		int startX = width / 2 - 195;
 		int startY = height / 6 + 40;
 
-		int numLoadedChunks = Chunkblaze.getChunkDaemon().getNumLoadedChunks();
-		drawString(fontRenderer, I18n.format("chunkblaze.gui.controlpanel.loadedChunks", numLoadedChunks), startX + 215, startY + 28, 0xFFFFFF);
+		boolean canRun = Chunkblaze.Session.canRun();
 
-		String worldName = Chunkblaze.Session.canRun() ? IOUtils.getWorldName() : I18n.format("chunkblaze.gui.controlpanel.warnSingleplayer");
+		int numLoadedChunks = Chunkblaze.getChunkDaemon().getNumLoadedChunks();
+		if (canRun)
+			drawString(fontRenderer, I18n.format("chunkblaze.gui.controlpanel.loadedChunks", numLoadedChunks), startX + 215, startY + 28, 0xFFFFFF);
+
+		String worldName = canRun ? IOUtils.getWorldName() : I18n.format("chunkblaze.gui.controlpanel.warnSingleplayer");
 		drawString(fontRenderer, worldName, startX + 215, startY + 94, 0xFFFFFF);
 
 		super.drawScreen(mouseX, mouseY, partialTicks);
