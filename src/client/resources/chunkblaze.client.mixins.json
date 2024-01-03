@@ -3,7 +3,8 @@
 	"package": "com.parzivail.chunkblaze.mixin",
 	"compatibilityLevel": "JAVA_17",
 	"client": [
-		"ClientChunkManagerMixin"
+		"ClientChunkManagerMixin",
+		"WorldAccessor"
 	],
 	"injectors": {
 		"defaultRequire": 1

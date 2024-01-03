@@ -17,7 +17,7 @@ import java.util.function.Consumer;
 @Mixin(ClientChunkManager.class)
 public class ClientChunkManagerMixin
 {
-	@Inject(method = "Lnet/minecraft/client/world/ClientChunkManager;loadChunkFromPacket(IILnet/minecraft/network/PacketByteBuf;Lnet/minecraft/nbt/NbtCompound;Ljava/util/function/Consumer;)Lnet/minecraft/world/chunk/WorldChunk;", at = @At("HEAD"))
+	@Inject(method = "loadChunkFromPacket(IILnet/minecraft/network/PacketByteBuf;Lnet/minecraft/nbt/NbtCompound;Ljava/util/function/Consumer;)Lnet/minecraft/world/chunk/WorldChunk;", at = @At("HEAD"))
 	private void loadChunkFromPacket(int x, int z, PacketByteBuf buf, NbtCompound nbt, Consumer<ChunkData.BlockEntityVisitor> consumer, CallbackInfoReturnable<@Nullable WorldChunk> cir)
 	{
 		Chunkblaze.CHUNK_HANDLER.loadChunkFromPacket(x, z, buf, nbt, consumer);

@@ -1,36 +1,53 @@
 package com.parzivail.chunkblaze;
 
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.Lifecycle;
+import com.parzivail.chunkblaze.mixin.WorldAccessor;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.PacketSender;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.ClientPlayNetworkHandler;
+import net.minecraft.client.world.ClientWorld;
+import net.minecraft.entity.Entity;
 import net.minecraft.nbt.*;
 import net.minecraft.network.PacketByteBuf;
 import net.minecraft.network.packet.s2c.play.ChunkData;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
-import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.*;
 import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.resource.DataConfiguration;
+import net.minecraft.resource.DataPackSettings;
+import net.minecraft.resource.featuretoggle.FeatureSet;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.ChunkSectionPos;
-import net.minecraft.world.ChunkSerializer;
-import net.minecraft.world.Heightmap;
-import net.minecraft.world.LightType;
-import net.minecraft.world.World;
+import net.minecraft.util.path.SymlinkValidationException;
+import net.minecraft.world.*;
 import net.minecraft.world.biome.Biome;
 import net.minecraft.world.biome.BiomeKeys;
 import net.minecraft.world.chunk.*;
 import net.minecraft.world.chunk.light.LightingProvider;
+import net.minecraft.world.dimension.DimensionOptions;
+import net.minecraft.world.dimension.DimensionTypes;
+import net.minecraft.world.gen.FlatLevelGeneratorPresets;
 import net.minecraft.world.gen.GenerationStep;
+import net.minecraft.world.gen.GeneratorOptions;
 import net.minecraft.world.gen.carver.CarvingMask;
-import net.minecraft.world.gen.chunk.BlendingData;
+import net.minecraft.world.gen.chunk.FlatChunkGenerator;
+import net.minecraft.world.level.LevelInfo;
+import net.minecraft.world.level.LevelProperties;
+import net.minecraft.world.level.storage.LevelStorage;
 import net.minecraft.world.storage.StorageIoWorker;
 
-import java.nio.file.Path;
+import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 public class ChunkHandler
 {
@@ -38,75 +55,184 @@ public class ChunkHandler
 			Block.STATE_IDS, BlockState.CODEC, PalettedContainer.PaletteProvider.BLOCK_STATE, Blocks.AIR.getDefaultState()
 	);
 
+	private final DataConfiguration _dataConfig;
+	private final GameRules _gameRules;
+	private final GeneratorOptions _generatorOpts;
+
 	private StorageIoWorker _regionStorage;
 
 	public ChunkHandler()
 	{
-		_regionStorage = new StorageIoWorker(Path.of("E:\\colby\\Desktop\\temp\\aaaa"), true, "chunk");
+		ClientChunkEvents.CHUNK_UNLOAD.register(this::unload);
+		ClientPlayConnectionEvents.JOIN.register(this::joinServer);
+		ClientPlayConnectionEvents.DISCONNECT.register(this::disconnect);
+		ClientEntityEvents.ENTITY_LOAD.register(this::entityLoaded);
+
+		_dataConfig = new DataConfiguration(
+				DataPackSettings.SAFE_MODE,
+				FeatureSet.empty()
+		);
+
+		_gameRules = new GameRules();
+		Stream.of(
+				GameRules.DO_DAYLIGHT_CYCLE,
+				GameRules.DO_DAYLIGHT_CYCLE,
+				GameRules.DO_ENTITY_DROPS,
+				GameRules.DO_FIRE_TICK,
+				GameRules.DO_INSOMNIA,
+				GameRules.DO_MOB_LOOT,
+				GameRules.DO_MOB_SPAWNING,
+				GameRules.DO_PATROL_SPAWNING,
+				GameRules.DO_TILE_DROPS,
+				GameRules.DO_TRADER_SPAWNING,
+				GameRules.DO_VINES_SPREAD,
+				GameRules.DO_WARDEN_SPAWNING,
+				GameRules.DO_WEATHER_CYCLE,
+				GameRules.DO_MOB_GRIEFING,
+				GameRules.PROJECTILES_CAN_BREAK_BLOCKS,
+				GameRules.LAVA_SOURCE_CONVERSION,
+				GameRules.WATER_SOURCE_CONVERSION,
+				GameRules.SPECTATORS_GENERATE_CHUNKS
+		).forEach(key -> _gameRules.get(key).set(false, null));
+
+		_generatorOpts = new GeneratorOptions(
+				0,
+				false,
+				false
+		);
+	}
+
+	private void joinServer(ClientPlayNetworkHandler cpnh, PacketSender sender, MinecraftClient mc)
+	{
+		var serverInfo = cpnh.getServerInfo();
+		var levelName = String.format("%s - %s", serverInfo.address, serverInfo.name).replaceAll("[^\\w_\\- ]+", "-");
+
+		var levelProps = new LevelProperties(
+				new LevelInfo(
+						levelName,
+						GameMode.SPECTATOR,
+						false,
+						Difficulty.NORMAL,
+						true,
+						_gameRules,
+						_dataConfig
+				),
+				_generatorOpts,
+				LevelProperties.SpecialProperty.FLAT,
+				Lifecycle.stable()
+		);
+
+		var lookup = BuiltinRegistries.createWrapperLookup().createRegistryLookup();
+		var preset = lookup
+				.getOrThrow(RegistryKeys.FLAT_LEVEL_GENERATOR_PRESET)
+				.getOrThrow(FlatLevelGeneratorPresets.THE_VOID);
+		var generator = new FlatChunkGenerator(preset.value().settings());
+
+		var overworldEntry = lookup
+				.getOrThrow(RegistryKeys.DIMENSION_TYPE)
+				.getOrThrow(DimensionTypes.OVERWORLD);
+		MutableRegistry<DimensionOptions> dimRegistry = new SimpleRegistry<>(RegistryKeys.DIMENSION, Lifecycle.stable());
+		dimRegistry.add(DimensionOptions.OVERWORLD, new DimensionOptions(overworldEntry, generator), Lifecycle.stable());
+		var manager = new DynamicRegistryManager.ImmutableImpl(List.of(dimRegistry));
+
+		try
+		{
+			var containerDir = mc.runDirectory.toPath().resolve("remote-saves");
+
+			var session = LevelStorage.create(containerDir).createSession(levelName);
+			session.backupLevelDataFile(manager, levelProps);
+			_regionStorage = new StorageIoWorker(session.getWorldDirectory(World.OVERWORLD).resolve("region"), true, "chunkblaze");
+		}
+		catch (IOException e)
+		{
+			throw new RuntimeException(e);
+		}
+		catch (SymlinkValidationException e)
+		{
+			throw new RuntimeException(e);
+		}
+	}
+
+	private void unload(ClientWorld world, WorldChunk chunk)
+	{
+		if (!Chunkblaze.isEnabled() || _regionStorage == null)
+			return;
+
+		_regionStorage.setResult(chunk.getPos(), serialize(world, chunk));
+	}
+
+	public void disconnect(ClientPlayNetworkHandler cpnh, MinecraftClient mc)
+	{
+		if (!Chunkblaze.isEnabled() || _regionStorage == null)
+			return;
+
+		// Capture remaining chunks
+		var chunkManager = mc.world.getChunkManager();
+		var chunks = chunkManager.chunks.chunks;
+		var nChunks = chunks.length();
+		for (var i = 0; i < nChunks; i++)
+		{
+			var chunk = chunks.get(i);
+			if (chunk == null)
+				continue;
+			_regionStorage.setResult(chunk.getPos(), serialize(mc.world, chunk));
+		}
+
+		_regionStorage.completeAll(true);
+
+		_regionStorage = null;
+	}
+
+	private void entityLoaded(Entity entity, ClientWorld world)
+	{
+		if (!Chunkblaze.isEnabled() || _regionStorage == null)
+			return;
+
+		var pos = entity.getChunkPos();
+		var chunk = world.getChunk(pos.x, pos.z);
+
+		if (chunk == null)
+			return;
+
+		_regionStorage.setResult(pos, serialize(world, chunk));
 	}
 
 	public void loadChunkFromPacket(int x, int z, PacketByteBuf buf, NbtCompound nbt, Consumer<ChunkData.BlockEntityVisitor> consumer)
 	{
-		if (!Chunkblaze.isEnabled())
+		if (!Chunkblaze.isEnabled() || _regionStorage == null)
 			return;
 
 		var mc = MinecraftClient.getInstance();
 
 		var pos = new ChunkPos(x, z);
 
+		// Load preliminary chunk to be updated later if possible
 		var localBuf = new PacketByteBuf(buf.retainedDuplicate());
 		var worldChunk = new WorldChunk(mc.world, pos);
 		worldChunk.loadFromPacket(localBuf, nbt, consumer);
 
-		// TODO: block entities present but invisible
-		// TODO: entities missing
-		// TODO: block updates missing?
 		_regionStorage.setResult(pos, serialize(mc.world, worldChunk));
-
-		// TODO: let this be async and join/wait when leaving server or manually flushing?
-		_regionStorage.completeAll(true);
 	}
 
 	public static NbtCompound serialize(World world, Chunk chunk)
 	{
 		ChunkPos chunkPos = chunk.getPos();
+		var posLong = chunkPos.toLong();
+
 		NbtCompound nbtCompound = NbtHelper.putDataVersion(new NbtCompound());
 		nbtCompound.putInt("xPos", chunkPos.x);
 		nbtCompound.putInt("yPos", chunk.getBottomSectionCoord());
 		nbtCompound.putInt("zPos", chunkPos.z);
 		nbtCompound.putLong("LastUpdate", world.getTime());
 		nbtCompound.putLong("InhabitedTime", chunk.getInhabitedTime());
-		nbtCompound.putString("Status", Registries.CHUNK_STATUS.getId(chunk.getStatus()).toString());
-		BlendingData blendingData = chunk.getBlendingData();
-		if (blendingData != null)
-		{
-			BlendingData.CODEC
-					.encodeStart(NbtOps.INSTANCE, blendingData)
-					.resultOrPartial(Chunkblaze.LOGGER::error)
-					.ifPresent(nbtElement -> nbtCompound.put("blending_data", nbtElement));
-		}
-
-		BelowZeroRetrogen belowZeroRetrogen = chunk.getBelowZeroRetrogen();
-		if (belowZeroRetrogen != null)
-		{
-			BelowZeroRetrogen.CODEC
-					.encodeStart(NbtOps.INSTANCE, belowZeroRetrogen)
-					.resultOrPartial(Chunkblaze.LOGGER::error)
-					.ifPresent(nbtElement -> nbtCompound.put("below_zero_retrogen", nbtElement));
-		}
-
-		UpgradeData upgradeData = chunk.getUpgradeData();
-		if (!upgradeData.isDone())
-		{
-			nbtCompound.put("UpgradeData", upgradeData.toNbt());
-		}
+		nbtCompound.putString("Status", ChunkStatus.SPAWN.toString());
 
 		ChunkSection[] chunkSections = chunk.getSectionArray();
 		NbtList nbtList = new NbtList();
 		LightingProvider lightingProvider = world.getChunkManager().getLightingProvider();
 		Registry<Biome> registry = world.getRegistryManager().get(RegistryKeys.BIOME);
 		Codec<ReadableContainer<RegistryEntry<Biome>>> codec = createCodec(registry);
-		boolean bl = chunk.isLightOn();
+		boolean isLightOn = chunk.isLightOn();
 
 		for (int i = lightingProvider.getBottomY(); i < lightingProvider.getTopY(); ++i)
 		{
@@ -143,23 +269,20 @@ public class ChunkHandler
 		}
 
 		nbtCompound.put("sections", nbtList);
-		if (bl)
+		if (isLightOn)
 		{
 			nbtCompound.putBoolean("isLightOn", true);
 		}
 
-		NbtList nbtList2 = new NbtList();
-
+		NbtList blockEntities = new NbtList();
 		for (BlockPos blockPos : chunk.getBlockEntityPositions())
 		{
-			NbtCompound nbtCompound3 = chunk.getPackedBlockEntityNbt(blockPos);
-			if (nbtCompound3 != null)
-			{
-				nbtList2.add(nbtCompound3);
-			}
+			NbtCompound beNbt = chunk.getPackedBlockEntityNbt(blockPos);
+			if (beNbt != null)
+				blockEntities.add(beNbt);
 		}
 
-		nbtCompound.put("block_entities", nbtList2);
+		nbtCompound.put("block_entities", blockEntities);
 		if (chunk.getStatus().getChunkType() == ChunkStatus.ChunkType.PROTOCHUNK)
 		{
 			ProtoChunk protoChunk = (ProtoChunk)chunk;
@@ -178,6 +301,27 @@ public class ChunkHandler
 			}
 
 			nbtCompound.put("CarvingMasks", nbtCompound3);
+		}
+		else
+		{
+			var entities = ((WorldAccessor)world).getEntityLookup();
+
+			NbtList entityNbts = new NbtList();
+			entities.iterate().forEach(entity -> {
+				var thisChunkPos = entity.getChunkPos().toLong();
+
+				if (thisChunkPos != posLong)
+					return;
+
+				NbtCompound entityNbt = new NbtCompound();
+				if (entity.saveNbt(entityNbt))
+				{
+					entityNbt.putByte("NoAI", (byte)1);
+					entityNbts.add(entityNbt);
+				}
+			});
+
+			nbtCompound.put("entities", entityNbts);
 		}
 
 		serializeTicks(world, nbtCompound, chunk.getTickSchedulers());
