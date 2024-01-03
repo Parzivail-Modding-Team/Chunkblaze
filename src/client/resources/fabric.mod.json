@@ -1,0 +1,35 @@
+{
+	"schemaVersion": 1,
+	"id": "chunkblaze",
+	"version": "${version}",
+	"name": "Chunkblaze",
+	"description": "",
+	"authors": [
+		"parzivail"
+	],
+	"contact": {
+		"homepage": "https://github.com/Parzivail-Modding-Team/chunkblaze",
+		"sources": "https://github.com/Parzivail-Modding-Team/chunkblaze"
+	},
+	"license": "LGPL3",
+	"icon": "assets/chunkblaze/icon.png",
+	"environment": "*",
+	"accessWidener": "chunkblaze.accesswidener",
+	"entrypoints": {
+		"client": [
+			"com.parzivail.chunkblaze.Chunkblaze"
+		]
+	},
+	"mixins": [
+		{
+			"config": "chunkblaze.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.15.0",
+		"minecraft": "~1.20.4",
+		"java": ">=17",
+		"fabric-api": "*"
+	}
+}
